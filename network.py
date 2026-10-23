@@ -13,6 +13,7 @@ from matplotlib.font_manager import FontProperties
 from matplotlib.textpath import TextToPath
 from itertools import combinations
 
+from agr.config import LANGUAGES
 
 TOOL_COLUMNS = [
     "code",
@@ -314,7 +315,11 @@ def write(records: pd.DataFrame, out_path: Path) -> None:
     records.to_csv(out_path, mode="a", header=not out_path.exists(), index=False)
 
 
-# --- state -------------------------------------------------------------------
+def init_session() -> None:
+    """Keys that exist before an ID is known."""
+    st.session_state.setdefault("partcipant_id", None)
+    st.session_state.setdefault("idiom", None)
+
 def init_state(categories) -> None:
     st.session_state.setdefault("points", [])
     st.session_state.setdefault("last_click", None)
@@ -385,8 +390,7 @@ def render_legend(text: pd.DataFrame,
 
     return st.session_state.category
 
-# add dynamic language
-def render_controls(base_img: Image.Image, out_path: Path, text:pd.DataFrame) -> None:
+def render_controls(base_img: Image.Image, out_path: Path, text: pd.DataFrame) -> None:
     col1, col2, col3 = st.columns(3)
     remove_point = text.loc[text["code"] == "remove_point", "text"].item()
     remove_all_points = text.loc[text["code"] == "remove_all_points", "text"].item()
@@ -397,11 +401,13 @@ def render_controls(base_img: Image.Image, out_path: Path, text:pd.DataFrame) ->
     with col1:
         if st.button(remove_point) and st.session_state.points:
             st.session_state.points.pop()
+            st.session_state.pending = None
             st.rerun()
 
     with col2:
         if st.button(remove_all_points):
             st.session_state.points = []
+            st.session_state.pending = None
             st.rerun()
 
     with col3:
@@ -416,16 +422,34 @@ def render_controls(base_img: Image.Image, out_path: Path, text:pd.DataFrame) ->
                 st.toast(saved, icon="✅")
                 st.rerun()
 
+@st.dialog("Login")
+def ask_participant() -> None:
+    with st.form("participant_form"):
+        idiom = st.text_input(f"Language ({', '.join(map(str, LANGUAGES))})")
+        confirmed = st.form_submit_button("Continue", type="primary")
+
+    if confirmed:
+        if idiom not in LANGUAGES:
+            st.error(f"Unknown language. Use one of: {', '.join(map(str, LANGUAGES))}")
+            return
+        st.session_state.participant_id = "567change"
+        st.session_state.idiom = idiom
+        st.rerun()
+
 
 # --- entry point -------------------------------------------------------------
-def run(
-        network_text_path: Path,
-        idiom: str,
-) -> None:
+def run(network_text_path: Path) -> None:
+
     render_styles()
+    init_session()
+
+    if st.session_state.idiom is None:
+        ask_participant()
+        st.stop()
 
     # Get idiom of a participant with a specific ID
     # Bypass this logic in case of unexpected errors
+    idiom = st.session_state.idiom
 
     text = read_network_text(network_text_path, idiom)
 
@@ -452,7 +476,10 @@ def run(
         st.rerun()
 
     if st.session_state.pending is not None:
-        ask_location(text)
+        if st.session_state.pending < len(st.session_state.points):
+            ask_location(text)
+        else:
+            st.session_state.pending = None
 
     # Change to participant_id
     out_path = OUT_PATH / f"{idiom}_response.csv"
@@ -460,13 +487,8 @@ def run(
 
 
 def main() -> None:
-    #parser = argparse.ArgumentParser()
-    #parser.add_argument("--idiom", required=True)
-    #args = parser.parse_args()
 
-    run(idiom="de",
-        network_text_path=Path("network_text.xlsx")
-        )
+    run(network_text_path=Path("network_text.xlsx"))
 
 
 if __name__ == "__main__":

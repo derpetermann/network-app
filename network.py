@@ -13,7 +13,8 @@ from matplotlib.font_manager import FontProperties
 from matplotlib.textpath import TextToPath
 from itertools import combinations
 
-from agr.config import LANGUAGES
+IDIOMS = ("sursilvan", "sutsilvan", "surmiran", "puter", "vallader")
+LANGUAGES: tuple[str, ...] = ("de", *IDIOMS)
 
 TOOL_COLUMNS = [
     "code",

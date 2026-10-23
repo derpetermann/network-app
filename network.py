@@ -460,11 +460,11 @@ def run(
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--idiom", required=True)
-    args = parser.parse_args()
+    #parser = argparse.ArgumentParser()
+    #parser.add_argument("--idiom", required=True)
+    #args = parser.parse_args()
 
-    run(idiom=args.idiom,
+    run(idiom="de",
         network_text_path=Path("network_text.xlsx")
         )
 

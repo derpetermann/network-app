@@ -1,4 +1,3 @@
-import argparse
 import io
 import math
 from pathlib import Path
@@ -13,8 +12,7 @@ from matplotlib.font_manager import FontProperties
 from matplotlib.textpath import TextToPath
 from itertools import combinations
 
-IDIOMS = ("sursilvan", "sutsilvan", "surmiran", "puter", "vallader")
-LANGUAGES: tuple[str, ...] = ("de", *IDIOMS)
+from agr.config import LANGUAGES
 
 TOOL_COLUMNS = [
     "code",
@@ -32,11 +30,11 @@ POINT_RADIUS = 8
 MARKER_PADDING = 2
 
 COLORS = {
-    "my_idiom":       (68, 119, 170),    # blue        #4477AA
-    "romansh":        (238, 119, 51),    # orange      #EE7733
-    "german":         (17, 119, 51),     # dark green  #117733
-    "english":        (204, 51, 17),     # red         #CC3311
-    "other_language": (221, 204, 119),   # sand        #DDCC77
+    "my_idiom":       (0, 114, 178),     # blue            #0072B2
+    "romansh":        (86, 180, 233),    # sky blue        #56B4E9
+    "german":         (0, 158, 115),     # bluish green    #009E73
+    "english":        (213, 94, 0),      # vermillion      #D55E00
+    "other_language": (204, 121, 167),   # reddish purple  #CC79A7
 }
 
 
@@ -45,8 +43,8 @@ LABELS_DUOLINGUAL = list(combinations(COLORS.keys(), 2))
 
 
 SIDELENGTH = 600
-MARGIN = 100
-N_CIRCLES = 6
+MARGIN = 50
+N_CIRCLES = 11
 IMAGE_DICT = {
     "width": SIDELENGTH,
     "height": SIDELENGTH,
@@ -55,9 +53,9 @@ IMAGE_DICT = {
     # sectors j = 1..6, boundaries at pi/6 * j, clockwise from the y axis
     "start_angle": 0.0,
     "clockwise": True,
-    "line_color_circle": "black",
+    "line_color_circle": "silver",
     "line_width_circle": 1.0,
-    "line_color_sector": "grey",
+    "line_color_sector": "silver",
     "line_width_sector": 1.0,}
 
 st.set_page_config(layout="wide")
@@ -71,17 +69,19 @@ def _char_widths_px(text, fontsize, dpi):
     return [_t2p.get_text_width_height_descent(c, prop, ismath=False)[0] * scale for c in text]
 
 
-def curved_text(ax, text, angle, radius, center, fontsize=11, dpi=100,
-                clockwise=True, align = "center", pad=3, letter_spacing=0.5, **kw):
-    """Draw `text` along a circle, centred on `angle` (rad, clockwise from 12 o'clock).
+import matplotlib.patheffects as pe
 
-    Axes must be in canvas pixel coords (y pointing down). Text in the lower
-    half is flipped so it always reads left to right.
-    """
+
+def curved_text(ax, text, angle, radius, center, fontsize=11, dpi=100,
+                clockwise=True, align="center", pad=3, letter_spacing=0.5,
+                halo_width=3, halo_color="white", **kw):
+
     cx, cy = center
     sign = 1 if clockwise else -1
     widths = [w + letter_spacing for w in _char_widths_px(text, fontsize, dpi)]
     total = sum(widths) / radius                      # arc span in radians
+
+    effects = [pe.withStroke(linewidth=halo_width, foreground=halo_color)] if halo_width else []
 
     # position on screen, measured clockwise from top
     screen_a = (sign * angle) % (2 * math.pi)
@@ -98,7 +98,8 @@ def curved_text(ax, text, angle, radius, center, fontsize=11, dpi=100,
         y = cy - radius * math.cos(a_mid)
         rot = -math.degrees(a_mid) + (180 if bottom else 0)
         ax.text(x, y, ch, rotation=rot, rotation_mode="anchor",
-                ha="center", va="center", fontsize=fontsize, **kw)
+                ha="center", va="center", fontsize=fontsize,
+                path_effects=effects, **kw)
         a += step * w / radius
 
 def _boundary_angles(cfg):
@@ -157,7 +158,7 @@ def draw_scale_label(ax, text, cfg, gap=14, fontsize=8):
     """Label curved along the outermost circle, centred on the start radius."""
     curved_text(ax, text, cfg["start_angle"], cfg["radii"][-1] - gap, cfg["center"],
                 fontsize=fontsize, clockwise=cfg["clockwise"], color=cfg["line_color_sector"],
-                zorder=10, align="start")
+                zorder=10, align="center")
 
 @st.cache_data
 def marker_image(colours: tuple[tuple[int, int, int], ...],
@@ -277,7 +278,8 @@ def draw_figure(cfg,
                         fontsize=11, clockwise=cfg["clockwise"])
     ego = text.loc[text["code"] == "ego", "text"].item().upper()
     draw_center_text(ax, ego , cfg, fontsize=10)
-    draw_scale_label(ax, text.loc[text["code"] == "frequency_label", "text"].item(), cfg)
+    frequency_label = f"<-----{text.loc[text["code"] == "frequency_label", "text"].item()}---->"
+    draw_scale_label(ax, frequency_label, cfg)
     return fig
 
 
@@ -352,8 +354,8 @@ def render_styles() -> None:
     st.markdown(
         """
         <style>
-        [data-testid="stMainBlockContainer"] { max-width: 1300px; }
-        h1 { text-align: center; }
+        [data-testid="stMainBlockContainer"] { max-width: 1300px; padding-top: 1rem;   padding-bottom: 1rem;}
+        h1 { text-align: left; }
         </style>
         """,
         unsafe_allow_html=True,
@@ -455,7 +457,7 @@ def run(network_text_path: Path) -> None:
     text = read_network_text(network_text_path, idiom)
 
     st.title(text.loc[text["code"] == "header", "text"].item())
-
+    st.text(text.loc[text["code"] == "instruction_contact", "text"].item())
     # Do not show participant ID but information about the participant (location, gender, age group)
     participant = f"{text.loc[text["code"] == "participant", "text"].item()}: {idiom}"
     st.caption(participant)
@@ -485,7 +487,6 @@ def run(network_text_path: Path) -> None:
     # Change to participant_id
     out_path = OUT_PATH / f"{idiom}_response.csv"
     render_controls(base_img, out_path, text)
-
 
 def main() -> None:
 
